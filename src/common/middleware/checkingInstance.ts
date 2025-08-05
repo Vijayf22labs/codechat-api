@@ -78,7 +78,17 @@ export const verifyWhatsappInstance = async (req: Request, res: Response, next: 
             StatusCodes.NOT_FOUND,
           );
         }
+      }
+      catch (dbError) {
+        logger.error(`................Error fetching instance from database for ${instanceName}:`, dbError);
+        serviceResponse = ServiceResponse.failure(
+          `Whatsapp Instance ${instanceName} not found in database`,
+          null,
+          StatusCodes.NOT_FOUND,
+        );
+      }
     }
+  }
    catch (e) {
     //Before Migration Fix
     // serviceResponse = ServiceResponse.failure(
