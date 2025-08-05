@@ -1,5 +1,5 @@
 import type { Iuser } from "@/api/whatsapp/whatsappInterface";
-import { User } from "@/api/whatsapp/whatsappRepository";
+import { User, WhatsappRepository } from "@/api/whatsapp/whatsappRepository";
 import { ServiceResponse } from "@/common/models/serviceResponse";
 import { whatsappWrapper } from "@/common/utils/whatsappWrapper";
 import { InstanceCache } from "@/common/utils/instanceCache";
@@ -8,6 +8,7 @@ import type { NextFunction, Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { WhatsappHelper } from "../utils/whatsappHelper";
 import { log } from "../utils/logger";
+import { InstanceConstants } from "@/constants/instanceConstants";
 
 export const verifyWhatsappInstance = async (req: Request, res: Response, next: NextFunction) => {
   let serviceResponse = null;
@@ -53,13 +54,32 @@ export const verifyWhatsappInstance = async (req: Request, res: Response, next: 
       next();
     } else {
       logger.error(`......................Instance ${instanceName} not found in API response.`);
-      serviceResponse = ServiceResponse.failure(
-        `Whatsapp Instance ${instanceName} not found`,
-        null,
-        StatusCodes.NOT_FOUND,
-      );
+      const whatsappRepository = new WhatsappRepository();
+      try {
+        const dbInstance = await whatsappRepository.findInstance(instanceName);
+        if (dbInstance?.status === InstanceConstants.ONLINE) {
+          logger.warn(`.........Database migration mismatch detected: MongoDB ONLINE but PostgreSQL empty for ${instanceName}`);
+          
+          // Clear cache and reset MongoDB status to OFFLINE
+          instanceCache.clearInstanceCache(instanceName);
+          await whatsappRepository.userLogout(instanceName);
+          
+          logger.info(`.................Reset ${instanceName} status due to database migration - forcing reconnection`);
+          serviceResponse = ServiceResponse.failure(
+            "INSTANCE_DISCONNECTED",
+            null,
+            StatusCodes.GONE,
+          );
+        } else {
+          // Standard 404 handling
+          serviceResponse = ServiceResponse.failure(
+            `Whatsapp Instance ${instanceName} not found`,
+            null,
+            StatusCodes.NOT_FOUND,
+          );
+        }
     }
-  } catch (e) {
+   catch (e) {
     //Before Migration Fix
     // serviceResponse = ServiceResponse.failure(
     //     `Whatsapp Instance ${instanceName} not found`,
